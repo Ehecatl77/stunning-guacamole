@@ -1,0 +1,219 @@
+#region VEXcode Generated Robot Configuration
+from vex import *
+import urandom
+import math
+
+# Brain should be defined by default
+brain=Brain()
+
+# Robot configuration code
+
+
+# wait for rotation sensor to fully initialize
+wait(30, MSEC)
+
+
+# Make random actually random
+def initializeRandomSeed():
+    wait(100, MSEC)
+    random = brain.battery.voltage(MV) + brain.battery.current(CurrentUnits.AMP) * 100 + brain.timer.system_high_res()
+    urandom.seed(int(random))
+      
+# Set random seed 
+initializeRandomSeed()
+
+
+def play_vexcode_sound(sound_name):
+    # Helper to make playing sounds from the V5 in VEXcode easier and
+    # keeps the code cleaner by making it clear what is happening.
+    print("VEXPlaySound:" + sound_name)
+    wait(5, MSEC)
+
+# add a small delay to make sure we don't print in the middle of the REPL header
+wait(200, MSEC)
+# clear the console to make sure we don't have the REPL in the console
+print("\033[2J")
+
+#endregion VEXcode Generated Robot Configuration
+
+# ------------------------------------------
+# 
+# 	Project:      General movement
+#	Author:       Ehecatl Mora
+#	Created:
+#	Description:  VEXcode V5 Python Project
+# 
+# ------------------------------------------
+
+from vex import *
+
+# General settings
+loop_refresh_time = 20
+
+# Forward and backward variables (Right Stick Up/Down)
+forward_stick = controller_1.axis2
+forward_multiplier = 0.4
+forward_direction = FORWARD
+
+# Variable for change
+delta = 0.1
+
+max_fwd_multiplier = 0.95
+min_fwd_multiplier = 0.40
+
+# Turning and rotation variables (Left Stick Left/Right)
+turn_shift_stick = controller_1.axis4
+turn_multiplier = 0.45
+turn_direction = REVERSE
+
+# Error and safety settings (Deadzone)
+stick_shaking_limit = 5
+
+# Arm motor variables
+arm_motor = Motor(Ports.PORT8)
+arm_max_rotation = -90
+arm_min_rotation = 0
+arm_speed = 45
+arm_is_down = False
+arm_current_position = 0
+step_degrees = 40
+
+# Claw motor variables
+claw_motor = Motor(Ports.PORT3)
+claw_max_rotation = 90
+claw_min_rotation = 0
+claw_speed = 50
+claw_is_open = False
+claw_current_position = 0
+claw_step_degrees = 100
+
+# Funcion to increase
+def increase_multiplier():
+    global forward_multiplier
+    if forward_multiplier < max_fwd_multiplier:
+        forward_multiplier += delta
+        update_screen()
+
+# Funcion to decrease
+def decrease_multiplier():
+    global forward_multiplier
+    if forward_multiplier > min_fwd_multiplier:
+        forward_multiplier -= delta
+        update_screen()
+
+# Function to lay down
+def move_arm_down():
+    global arm_is_down, arm_current_position
+    arm_motor.spin_for(FORWARD, step_degrees, DEGREES, arm_speed, PERCENT)
+    arm_current_position -= step_degrees
+
+    if arm_current_position <= arm_max_rotation:
+        arm_current_position = arm_max_rotation
+        arm_is_down = True
+
+    update_screen()
+
+# Function to lift the arm
+def move_arm_up():
+    global arm_is_down, arm_current_position
+    arm_motor.spin_for(REVERSE, step_degrees, DEGREES, arm_speed, PERCENT)
+    arm_current_position += step_degrees
+
+    if arm_current_position >= arm_min_rotation:
+        arm_current_position = arm_min_rotation
+        arm_is_down = False
+
+    update_screen()
+
+# Function to open claw
+def open_claw():
+    global claw_is_open, claw_current_position
+    claw_motor.spin_for(FORWARD, claw_step_degrees, DEGREES, claw_speed, PERCENT)
+    claw_current_position += claw_step_degrees
+
+    if claw_current_position >= claw_max_rotation:
+        claw_current_position = claw_max_rotation
+        claw_is_open = True
+
+    update_screen()
+
+# Function to close claw
+def close_claw():
+    global claw_is_open, claw_current_position
+    claw_motor.spin_for(REVERSE, claw_step_degrees, DEGREES, claw_speed, PERCENT)
+    claw_current_position -= claw_step_degrees
+
+    if claw_current_position <= claw_min_rotation:
+        claw_current_position = claw_min_rotation
+        claw_is_open = False
+
+    update_screen()
+
+def update_screen():
+    brain.screen.clear_screen()
+    brain.screen.set_cursor(1, 1)
+    brain.screen.print("forward_multiplier: ", forward_multiplier)
+    brain.screen.set_cursor(2, 1)
+    brain.screen.print("arm position: ", arm_current_position)
+    brain.screen.set_cursor(3, 1)
+    brain.screen.print("claw position: ", claw_current_position)
+
+# Main function to handle the remote control loop
+def main():
+
+    controller_1.buttonUp.pressed(increase_multiplier)
+    controller_1.buttonDown.pressed(decrease_multiplier)
+
+    controller_1.buttonLeft.pressed(move_arm_down)
+    controller_1.buttonRight.pressed(move_arm_up)
+
+    controller_1.buttonL1.pressed(open_claw)
+    controller_1.buttonL2.pressed(close_claw)
+
+    update_screen()
+
+    while True:
+        current_forward = forward_stick.position()
+        current_turn = turn_shift_stick.position()
+
+        move_my_robot(
+            current_forward,
+            current_turn,
+            stick_shaking_limit,
+            forward_multiplier,
+            turn_multiplier,
+            forward_direction,
+            turn_direction
+        )
+
+        wait(loop_refresh_time, MSEC)
+
+# Custom function that does the math and spins the wheels
+def move_my_robot(
+    forward_value,
+    turn_value,
+    stick_error,
+    multiply_forward,
+    multiply_turn,
+    left_side_dir,
+    right_side_dir
+):
+
+    final_forward = forward_value * multiply_forward
+    final_turn = turn_value * multiply_turn
+
+    if abs(final_forward) <= stick_error:
+        final_forward = 0
+
+    if abs(final_turn) <= stick_error:
+        final_turn = 0
+
+    left_wheel_speed = final_forward + final_turn
+    right_wheel_speed = final_forward - final_turn
+
+    LeftMotor.spin(left_side_dir, left_wheel_speed, PERCENT)
+    RightMotor.spin(right_side_dir, right_wheel_speed, PERCENT)
+
+    return
+
+main()
